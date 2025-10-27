@@ -788,6 +788,8 @@ class Glm4MoeForCausalLM(DeepseekV2ForCausalLM):
             disable_reason = "Only GLM-4.5 or GLM-4.6 on NV-platform with capability >= 80 can use shared experts fusion optimization."
         elif get_moe_expert_parallel_world_size() > 1:
             disable_reason = "Deepseek and GLM-4.5 or GLM-4.6 can not use shared experts fusion optimization under expert parallelism."
+        elif self.quant_config and self.quant_config.get_name() == "w4afp8":
+            disable_reason = "GLM-4.5 or GLM-4.6 W4AFP8 model does not support shared experts fusion optimization."
 
         if disable_reason is not None:
             global_server_args_dict["disable_shared_experts_fusion"] = True
@@ -930,6 +932,15 @@ class Glm4MoeForCausalLM(DeepseekV2ForCausalLM):
             ckpt_up_proj_name="up_proj",
             num_experts=self.config.n_routed_experts + self.num_fused_shared_experts,
         )
+
+        """ 这里是新增的
+        # Params for special naming rules in mixed-precision models, for example:
+        # model.layers.xx.mlp.experts.xx.w1.input_scale. For details,
+        """ 
+        if self.quant_config and self.quant_config.get_name() == "w4afp8":
+            expert_params_mapping += FusedMoE.make_expert_input_scale_params_mapping(
+                num_experts=self.config.n_routed_experts
+            )
 
         # Fuse q_a_proj and kv_a_proj_with_mqa along output dimension when q_lora_rank is not None
         fuse_qkv_a_proj = hasattr(self.config, "q_lora_rank") and (
